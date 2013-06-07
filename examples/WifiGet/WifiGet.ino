@@ -6,7 +6,7 @@
 #define SERVER "www.google.com"
 
 //#define LINKDEBUG // Print what is sent/received on the link
-// #define COM_WDT // A watchdog timer can be useful due to the WiFi stacks tenendcy to just hang
+//#define COM_WDT // A watchdog timer can be useful due to the WiFi stacks tenendcy to just hang
 
 #define QUERY_PATH "/search?q="
 #define MAX_TERM_SIZE 100
