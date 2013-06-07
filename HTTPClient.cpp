@@ -41,14 +41,14 @@ typedef struct
 #define URI_ALLOWED(byte) ((byte>='A' && byte<='Z') || (byte>='a' && byte<='z') || (byte>='0' && byte<='9') || byte == '-' || byte == '_' || byte == '.' || byte == '~')
 #define URI_RESERVED(byte) (byte == '!' || byte == '*' || byte == '\'' || byte == '(' || byte == ')' || byte == ';' || byte == ':' || byte == '&' || byte == '=' || byte == '+' || byte == '$' || byte == ',' || byte == '/' || byte == '?' || byte == '#' || byte == '[' || byte == ']')
 
-HTTPClient::HTTPClient(char* host, uint8_t* ip) :
-    EthernetClient(), hostName(host), debugCommunication(0), ip(ip), port(80)
+HTTPClient::HTTPClient(char* host) :
+    WiFiClient(), hostName(host), debugCommunication(0), host(host), port(80)
 {
   //nothing else to do
 }
 
-HTTPClient::HTTPClient(char* host, uint8_t* ip, uint16_t port) :
-    EthernetClient(), hostName(host), debugCommunication(0), ip(ip), port(port)
+HTTPClient::HTTPClient(char* host, uint16_t port) :
+    WiFiClient(), hostName(host), debugCommunication(0), host(host), port(port)
 {
   //nothing else to do
 }
@@ -78,10 +78,13 @@ HTTPClient::getURI(char* uri, http_client_parameter parameters[],
   sendUriAndHeaders(result, this->hostName, PSTR("GET"), uri, parameters,
       headers);
   //ok header finished
-  fprintf_P(result, PSTR("\n"));
-  skipHeader(result);
+  fprintf_P(result, PSTR("\r\n"));
 
-  return result;
+  if(skipHeader(result)) return result;
+  else {
+    stop();
+    return NULL;
+  }
 }
 
 FILE*
@@ -177,6 +180,7 @@ HTTPClient::openClientFile()
   FILE* result = fdevopen(clientWrite, clientRead);
   if (result == NULL)
     {
+      Serial.println(F("FdevOpenFail"));
       return NULL;
     }
   http_stream_udata* udata = (http_stream_udata*) malloc(
@@ -184,11 +188,11 @@ HTTPClient::openClientFile()
   fdev_set_udata(result,udata);
   udata->client = this;
   udata->encode = 0;
-  if (connected())
-    {
-      stop();
-    }
-  if (connect(ip,port))
+  
+  stop();
+  //if(connected()) stop();
+
+  if (connect(host,port))
     {
       return result;
     }
@@ -234,8 +238,8 @@ HTTPClient::sendUriAndHeaders(FILE* stream, char* hostName, const char* requestT
         }
     }
   HTTPClient::setEncoding(stream, 0, 0);
-  fprintf_P(stream, PSTR(
-      " HTTP/1.1\nHost: %s\nAccept: */*\nConnection: close\n"), hostName);
+  fprintf_P(stream, PSTR(" HTTP/1.1\r\nHost: %s\r\n"), hostName);
+  //fprintf_P(stream, PSTR(" HTTP/1.1\nHost: %s\nAccept: */*\nConnection: close\n"), hostName);
   //is there an additional header?
   if (headers != NULL)
     {
@@ -326,6 +330,7 @@ HTTPClient::clientWrite(char byte, FILE* stream)
   return 0;
 }
 
+
 int
 HTTPClient::clientRead(FILE* stream)
 {
@@ -335,10 +340,7 @@ HTTPClient::clientRead(FILE* stream)
     }
   http_stream_udata* udata = (http_stream_udata*) fdev_get_udata(stream);
   HTTPClient* client = udata->client;
-  if (!client->connected())
-    {
-      return EOF;
-    }
+
   //block until we got a byte
   while (client->available() == 0)
     {
@@ -396,13 +398,15 @@ HTTPClient::clientRead(FILE* stream)
     }
 }
 
+
 int
 HTTPClient::skipHeader(FILE* stream)
 {
   //skip over the header
   fscanf_P(stream, PSTR("HTTP/1.1 %i"), &lastReturnCode);
-  static int inByte = 0;
-  static int lastByte = 0;
+  char inByte = '\0';
+  char lastByte = '\0';
+
   while (!(inByte == '\n' && lastByte == '\n'))
     {
       //by that we ignore \r
@@ -415,10 +419,10 @@ HTTPClient::skipHeader(FILE* stream)
         {
           //hmm, an error occured - lets just end this
           HTTPClient::closeStream(stream);
-          return NULL;
+          return 0;
         }
     }
-  return 0;
+  return 1;
 }
 
 void
